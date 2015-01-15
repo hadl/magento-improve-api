@@ -23,7 +23,8 @@ class Bubble_Api_Helper_Catalog_Product extends Mage_Core_Helper_Abstract
                 ->addFilterByRequiredOptions()
                 ->getAllIds();
 
-            $usedProductIds = array_diff($newProductIds, $oldProductIds);
+            //$usedProductIds = array_diff($newProductIds, $oldProductIds);
+            $usedProductIds = array_unique( array_merge($oldProductIds, $newProductIds) );
 
             if (!empty($usedProductIds)) {
                 if ($product->isConfigurable()) {
@@ -132,7 +133,7 @@ class Bubble_Api_Helper_Catalog_Product extends Mage_Core_Helper_Abstract
             $productType->setUsedProductAttributeIds($attributeIds);
             $attributesData = $productType->getConfigurableAttributesAsArray();
         }
-        if (!empty($configurableAttributes)){
+        if (!empty($configurableAttributes)) {
             foreach ($attributesData as $idx => $val) {
                 if (!in_array($val['attribute_id'], $configurableAttributes)) {
                     unset($attributesData[$idx]);
@@ -140,7 +141,8 @@ class Bubble_Api_Helper_Catalog_Product extends Mage_Core_Helper_Abstract
             }
         }
 
-        $products = Mage::getModel('catalog/product')->getCollection()
+        $products = Mage::getModel('catalog/product')
+            ->getCollection()
             ->addIdFilter($simpleProductIds);
 
         if (count($products)) {
@@ -152,24 +154,64 @@ class Bubble_Api_Helper_Catalog_Product extends Mage_Core_Helper_Abstract
                     $optionId = $product->getData($attributeCode);
                     $isPercent = 0;
                     $priceChange = 0;
-                    if (!empty($priceChanges) && isset($priceChanges[$attributeCode])) {
-                        $optionText = $product->getResource()
+                    if (!empty($priceChanges) /*&& (isset($priceChanges[$attributeCode]) || $priceChanges['key'] == $attributeCode)*/) {
+                        /*$optionText = $product
+                            ->getResource()
                             ->getAttribute($attribute['attribute_code'])
                             ->getSource()
-                            ->getOptionText($optionId);
-                        if (isset($priceChanges[$attributeCode][$optionText])) {
-                            if (false !== strpos($priceChanges[$attributeCode][$optionText], '%')) {
-                                $isPercent = 1;
+                            ->getOptionText($optionId);*/
+
+                        /*if (isset($priceChanges[$attributeCode][$optionText])) {
+                                if (false !== strpos($priceChanges[$attributeCode][$optionText], '%')) {
+                                        $isPercent = 1;
+                                }
+                                $priceChange = preg_replace('/[^0-9\.,-]/', '', $priceChanges[$attributeCode][$optionText]);
+                                $priceChange = (float) str_replace(',', '.', $priceChange);
+                        }*/
+
+                        // check if pricechanges has multi-config-attributes and change array structure
+                        $tmp = reset($priceChanges);
+                        $tmp = (array) $tmp;
+                        if(!isset($tmp['key'])){
+                            $priceChanges = $tmp;
+                        }
+
+                        foreach ($priceChanges as $_priceChange) {
+                            $_priceChange = (array) $_priceChange;
+                            if ($_priceChange['key'] == $attributeCode) {
+
+                                if (is_array($_priceChange['value'])) {
+                                    foreach ($_priceChange['value'] as $_priceChangeValue) {
+                                        $_priceChangeValue = (array) $_priceChangeValue;
+                                        if ($_priceChangeValue['key'] == $optionId) {
+                                            $change = $_priceChangeValue['value'];
+                                            if(empty($change)){
+                                                continue;
+                                            }
+                                            if (false !== strpos($change, '%')) {
+                                                $isPercent = 1;
+                                            }
+                                            $priceChange = preg_replace('/[^0-9\.,-]/', '', $change);
+                                            $priceChange = (float) str_replace(',', '.', $priceChange);
+
+                                            $attribute['values'][$optionId] = array(
+                                                'value_index'   => $optionId,
+                                                'is_percent'    => $isPercent,
+                                                'pricing_value' => $priceChange,
+                                            );
+                                        }
+                                    }
+                                }
                             }
-                            $priceChange = preg_replace('/[^0-9\.,-]/', '', $priceChanges[$attributeCode][$optionText]);
-                            $priceChange = (float) str_replace(',', '.', $priceChange);
                         }
                     }
-                    $attribute['values'][$optionId] = array(
-                        'value_index' => $optionId,
-                        'is_percent' => $isPercent,
-                        'pricing_value' => $priceChange,
-                    );
+                    /*if (!isset($attribute['values'][$optionId])) {
+                        $attribute['values'][$optionId] = array(
+                            'value_index'   => $optionId,
+                            'is_percent'    => $isPercent,
+                            'pricing_value' => $priceChange,
+                        );
+                    }*/
                 }
             }
             $mainProduct->setConfigurableAttributesData($attributesData);
